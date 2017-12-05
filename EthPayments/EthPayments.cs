@@ -1,8 +1,9 @@
 ﻿using EthPayments.Models;
+using Nethereum.Contracts;
 using Nethereum.Geth;
 using Nethereum.Geth.RPC.Debug.DTOs;
-using Nethereum.RPC.Eth.DTOs;
 using Nethereum.Hex.HexTypes;
+using Nethereum.RPC.Eth.DTOs;
 using Nethereum.Util;
 using Newtonsoft.Json;
 using NLog;
@@ -15,7 +16,7 @@ using System.Threading.Tasks;
 
 namespace EthPayments
 {
-    public class EthPayments
+    public class EthPayments : IPayments
     {
         private readonly Logger logger = LogManager.GetCurrentClassLogger();
         
@@ -37,33 +38,34 @@ namespace EthPayments
 
         public EthPayments(EthPaymentsConfig config)
         {
+            logger.Info($"Mode: ETH");
+            logger.Info($"Loaded wallets: {config.Wallets.Count()}");
+            logger.Info($"Geth address: {config.GethAddress}");
+            logger.Info($"Callback url: {config.CallbackUrl}");
+
             wallets = new HashSet<string>(config.Wallets);
             walletsTrimmed = new HashSet<string>(config.WalletsTrimmed);
             web3 = new Web3Geth(config.GethAddress);
             callbackUrl = config.CallbackUrl;
-
-            logger.Info($"Loaded wallets: {wallets.Count()}");
-            logger.Info($"Geth address: {config.GethAddress}");
-            logger.Info($"Callback url: {config.CallbackUrl}");
         }
-
-        public async Task VerifyWalletsAsync(int? fromBlock = null)
+        
+        public async Task VerifyWalletsAsync(long? fromBlock = null)
         {
-            var latestBlockNumber = await web3.Eth.Blocks.GetBlockNumber.SendRequestAsync();
-            var latestBlockNumberInt = int.Parse(latestBlockNumber.Value.ToString());
-            var latestBlockNumberStart = latestBlockNumberInt - blockCount;
+            var latestBlock = await web3.Eth.Blocks.GetBlockNumber.SendRequestAsync();
+            var latestBlockNumber = long.Parse(latestBlock.Value.ToString());
+            var latestBlockNumberFrom = latestBlockNumber - blockCount;
 
-            logger.Debug($"Scanning new transactions {latestBlockNumberStart}-{latestBlockNumberInt}");
-            await VerifyBlockAsync(latestBlockNumberStart, latestBlockNumberInt, latestBlockNumberInt, notifiedTxs, false);
-            
-            fromBlock = Math.Min(fromBlock ?? latestBlockNumberInt - blockConfirmedCount, latestBlockNumberInt - blockConfirmedCount);
-            var fromBlockEnd = latestBlockNumberInt - blockCount;
+            logger.Debug($"Scanning new transactions {latestBlockNumberFrom}-{latestBlockNumber}");
+            await VerifyBlockAsync(latestBlockNumberFrom, latestBlockNumber, latestBlockNumber, notifiedTxs, false);
+
+            fromBlock = Math.Min(fromBlock ?? latestBlockNumber - blockConfirmedCount, latestBlockNumber - blockConfirmedCount);
+            var fromBlockEnd = latestBlockNumber - blockCount;
             
             logger.Debug($"Scanning confirmed transactions {fromBlock}-{fromBlockEnd}");
-            await VerifyBlockAsync(fromBlock.Value, fromBlockEnd, latestBlockNumberInt, confirmedTxs, true);            
+            await VerifyBlockAsync(fromBlock.Value, fromBlockEnd, latestBlockNumber, confirmedTxs, true);
         }
 
-        private async Task VerifyBlockAsync(int blockFrom, int blockTo, int latestBlockNumber, HashSet<string> txs, bool isConfirmed)
+        private async Task VerifyBlockAsync(long blockFrom, long blockTo, long latestBlockNumber, HashSet<string> txs, bool isConfirmed)
         {
             for (var i = blockFrom; i <= blockTo; i++)
             {
@@ -97,7 +99,7 @@ namespace EthPayments
             }
         }
 
-        private async Task VerifyTransactionByLogsAsync(Transaction transaction, int blockConfirmations, bool isConfirmed)
+        private async Task VerifyTransactionByLogsAsync(Transaction transaction, long blockConfirmations, bool isConfirmed)
         {
             logger.Trace($"  trace transaction {transaction.TransactionHash}");
 
@@ -147,7 +149,7 @@ namespace EthPayments
             }
         }
 
-        public void OnNewTransaction(string transactionHash, HexBigInteger amount, string to, int blockConfirmations, bool isConfirmed, bool txFromTrace)
+        public void OnNewTransaction(string transactionHash, HexBigInteger amount, string to, long blockConfirmations, bool isConfirmed, bool txFromTrace)
         {
             var value = UnitConversion.Convert.FromWei(amount);
 

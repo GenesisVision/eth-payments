@@ -18,12 +18,27 @@ namespace EthPayments
                 logger.Info("EthPayments started");
 
                 var wallets = File.ReadAllLines("wallets.txt");
-                var config = new EthPaymentsConfig(wallets, "http://127.0.0.1:8545/", "");
-                var paymentService = new EthPayments(config);
-                
-                if (args.Count() > 0)
+                var gethAddress = "http://127.0.0.1:8545/";
+                var callbackUrl = "";
+                var contractAddress = "";
+                var config = new EthPaymentsConfig(wallets, gethAddress, callbackUrl, contractAddress);
+
+                IPayments paymentService;
+                switch (args.FirstOrDefault())
                 {
-                    var fromBlock = int.Parse(args[0]);
+                    case "-eth":
+                        paymentService = new EthPayments(config);
+                        break;
+                    case "-token":
+                        paymentService = new TokenPayment(config);
+                        break;
+                    default:
+                        throw new ArgumentNullException();
+                }
+                
+                if (args.Count() > 1)
+                {
+                    var fromBlock = long.Parse(args[1]);
                     logger.Info($"From block: {fromBlock}");
                     paymentService.VerifyWalletsAsync(fromBlock).GetAwaiter().GetResult();
                 }

@@ -137,7 +137,7 @@ namespace EthPayments
                             if (balance >= amount)
                             {
                                 logger.Warn($"Find by trace! Tx: {transaction.TransactionHash}, to: {txTo}, amount: {amount}, balance: {balance}");
-                                OnNewTransaction(transaction.TransactionHash, hexAmount, txTo, blockConfirmations, isConfirmed, true);
+                                OnNewTransaction(transaction.TransactionHash, hexAmount, "0x" + txTo, blockConfirmations, isConfirmed, true);
                             }
                             else
                             {
@@ -159,8 +159,8 @@ namespace EthPayments
                 return;
 
             var client = new HttpClient();
-
-            var data = new FormUrlEncodedContent(new[]
+			
+			var data = new FormUrlEncodedContent(new[]
             {
                 new KeyValuePair<string, string>("tx_hash", transactionHash),
                 new KeyValuePair<string, string>("address", to),

@@ -23,3 +23,4 @@ _ReSharper*/
 packages/*
 
 
+/EthPayments/appsettings.json

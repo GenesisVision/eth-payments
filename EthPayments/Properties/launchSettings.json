@@ -1,8 +1,7 @@
 {
   "profiles": {
     "EthPayments": {
-      "commandName": "Project",
-      "commandLineArgs": "-token"
+      "commandName": "Project"
     }
   }
 }

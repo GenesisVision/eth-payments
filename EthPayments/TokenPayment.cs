@@ -49,7 +49,8 @@ namespace EthPayments
 			logger.Info($"Loaded wallets: {config.Wallets.Count()}");
 			logger.Info($"Geth address: {config.GethAddress}");
 			logger.Info($"Callback url: {config.CallbackUrl}");
-			logger.Info($"Contract Address: {config.TokenContractAddress}");
+			logger.Info($"{nameof(config.TokenContractAddress)}: {config.TokenContractAddress}");
+			logger.Info($"{nameof(config.TokenCurrency)}: {config.TokenCurrency}");
 
 			wallets = new HashSet<string>(config.Wallets);
 			web3 = new Web3Geth(config.GethAddress);
@@ -123,7 +124,7 @@ namespace EthPayments
 				new KeyValuePair<string, string>("amount", value.ToString(CultureInfo.InvariantCulture)),
 				new KeyValuePair<string, string>("amountString", amount.ToString(CultureInfo.InvariantCulture)),
 				new KeyValuePair<string, string>("confirmations", blockConfirmations.ToString(CultureInfo.InvariantCulture)),
-				new KeyValuePair<string, string>("isConfirmed", isConfirmed.ToString()),
+				new KeyValuePair<string, string>("isConfirmed", isConfirmed.ToString())
 			};
 
 			var data = new FormUrlEncodedContent(requestItems);

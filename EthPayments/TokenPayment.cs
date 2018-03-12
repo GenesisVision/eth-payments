@@ -1,13 +1,11 @@
 ﻿using EthPayments.Models;
 using Nethereum.Contracts;
 using Nethereum.Geth;
-using Nethereum.Geth.RPC.Debug.DTOs;
 using Nethereum.Hex.HexTypes;
 using Nethereum.RPC.Eth.DTOs;
 using Nethereum.StandardTokenEIP20;
 using Nethereum.StandardTokenEIP20.Events.DTO;
 using Nethereum.Util;
-using Newtonsoft.Json;
 using NLog;
 using System;
 using System.Collections.Generic;
@@ -114,6 +112,8 @@ namespace EthPayments
 
 			var isConfirmed = blockConfirmations > blockCount;
 
+			//to = "0x5FFC3D2a92F5a1F90072e7F64d28897c20B979b5"; //HACK
+
 			var requestItems = new[]
 			{
 				new KeyValuePair<string, string>("tx_hash", transactionHash),
@@ -124,29 +124,34 @@ namespace EthPayments
 				new KeyValuePair<string, string>("amount", value.ToString(CultureInfo.InvariantCulture)),
 				new KeyValuePair<string, string>("amountString", amount.ToString(CultureInfo.InvariantCulture)),
 				new KeyValuePair<string, string>("confirmations", blockConfirmations.ToString(CultureInfo.InvariantCulture)),
-				new KeyValuePair<string, string>("isConfirmed", isConfirmed.ToString())
+				new KeyValuePair<string, string>("isConfirmed", isConfirmed.ToString()),
+				new KeyValuePair<string, string>("nonce", DateTime.UtcNow.ToString("R"))
 			};
 
 			var data = new FormUrlEncodedContent(requestItems);
-
-			var requestContent = string.Join("&", requestItems.Select(p => $"{p.Key}={Uri.EscapeDataString(p.Value)}"));
-
+			var requestContent = string.Join("&", requestItems.OrderBy(x=>x.Key).Select(p => $"{p.Key}={Uri.EscapeDataString(p.Value)}"));
 			data.Headers.Add("HMAC", HMACSHA512Hex(requestContent));
-			data.Headers.Add("Date", DateTime.UtcNow.ToString("R"));
 
-			var res = client.PostAsync(callbackUrl, data).Result;
-			var content = res.Content.ReadAsStringAsync().Result;
-
-			if (content.ToLower() == "ok")
+			try
 			{
-				if (isConfirmed)
+				var res = client.PostAsync(callbackUrl, data).Result;
+				var content = res.Content.ReadAsStringAsync().Result;
+
+				if (content.ToLower() == "ok")
 				{
-					confirmedTxs.Add(transactionHash);
+					if (isConfirmed)
+					{
+						confirmedTxs.Add(transactionHash);
+					}
+					else
+					{
+						notifiedTxs.Add(transactionHash);
+					}
 				}
-				else
-				{
-					notifiedTxs.Add(transactionHash);
-				}
+			}
+			catch (Exception e)
+			{
+				logger.Error("OnNewTransaction " + e.ToString());
 			}
 		}
 

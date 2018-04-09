@@ -4,6 +4,6 @@ namespace EthPayments
 {
     public interface IPayments
     {
-        Task VerifyWalletsAsync(long? fromBlock = null);
+        Task<long> VerifyWalletsAsync(long? fromBlock = null);
     }
 }

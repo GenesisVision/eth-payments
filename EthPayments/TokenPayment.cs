@@ -19,150 +19,104 @@ using System.Threading.Tasks;
 
 namespace EthPayments
 {
-	public class TokenPayment : IPayments
-	{
-		private readonly Logger logger = LogManager.GetCurrentClassLogger();
+    public class TokenPayment : IPayments
+    {
+        private readonly Logger logger = LogManager.GetCurrentClassLogger();
 
-		private readonly string callbackUrl;
-		private readonly EthPaymentsConfig config;
-		private readonly Web3Geth web3;
+        private readonly string callbackUrl;
+        private readonly EthPaymentsConfig config;
+        private readonly NotificationSender notificationSender;
+        private readonly Web3Geth web3;
 
-		private readonly HexBigInteger zero = new HexBigInteger(0);
-		private readonly HashSet<string> notifiedTxs = new HashSet<string>();
-		private readonly HashSet<string> confirmedTxs = new HashSet<string>();
-		//private readonly HashSet<string> confirmedTxs = new HashSet<string>();
-		private readonly HashSet<string> wallets;
-		private readonly Event transfersEvent;
+        private readonly HexBigInteger zero = new HexBigInteger(0);
+        private readonly HashSet<string> notifiedTxs = new HashSet<string>();
+        private readonly HashSet<string> confirmedTxs = new HashSet<string>();
+        //private readonly HashSet<string> confirmedTxs = new HashSet<string>();
+        private readonly HashSet<string> wallets;
+        private readonly Event transfersEvent;
 
-		private const int blockCount = 14;
-		private const int blockConfirmedCount = 40;
+        private const int blockCount = 14;
+        private const int blockConfirmedCount = 40;
 
-		private TokenPayment()
-		{
-		}
+        public TokenPayment(EthPaymentsConfig config)
+        {
+            logger.Info($"Mode: token");
+            logger.Info($"Loaded wallets: {config.Wallets.Count()}");
+            logger.Info($"Geth address: {config.GethAddress}");
+            logger.Info($"Callback url: {config.CallbackUrl}");
+            logger.Info($"{nameof(config.TokenContractAddress)}: {config.TokenContractAddress}");
+            logger.Info($"{nameof(config.TokenCurrency)}: {config.TokenCurrency}");
 
-		public TokenPayment(EthPaymentsConfig config)
-		{
-			logger.Info($"Mode: token");
-			logger.Info($"Loaded wallets: {config.Wallets.Count()}");
-			logger.Info($"Geth address: {config.GethAddress}");
-			logger.Info($"Callback url: {config.CallbackUrl}");
-			logger.Info($"{nameof(config.TokenContractAddress)}: {config.TokenContractAddress}");
-			logger.Info($"{nameof(config.TokenCurrency)}: {config.TokenCurrency}");
+            wallets = new HashSet<string>(config.Wallets);
+            web3 = new Web3Geth(config.GethAddress);
+            callbackUrl = config.CallbackUrl;
 
-			wallets = new HashSet<string>(config.Wallets);
-			web3 = new Web3Geth(config.GethAddress);
-			callbackUrl = config.CallbackUrl;
+            this.config = config;
 
-			this.config = config;
+            notificationSender = new NotificationSender(callbackUrl, config.ApiKey, config.ApiSecret);
 
-			if (!string.IsNullOrEmpty(config.TokenContractAddress))
-			{
-				var tokenService = new StandardTokenService(web3, config.TokenContractAddress);
-				transfersEvent = tokenService.GetTransferEvent();
-			}
-		}
 
-		public async Task VerifyWalletsAsync(long? fromBlock = null)
-		{
-			var latestBlock = await web3.Eth.Blocks.GetBlockNumber.SendRequestAsync();
-			var latestBlockNumber = long.Parse(latestBlock.Value.ToString());
+            if (!string.IsNullOrEmpty(config.TokenContractAddress))
+            {
+                var tokenService = new StandardTokenService(web3, config.TokenContractAddress);
+                transfersEvent = tokenService.GetTransferEvent();
+            }
+        }
 
-			fromBlock = Math.Min(fromBlock ?? latestBlockNumber - blockConfirmedCount, latestBlockNumber - blockConfirmedCount);
-			var toBlock = latestBlockNumber - blockCount;
+        public async Task<long> VerifyWalletsAsync(long? fromBlock = null)
+        {
+            var latestBlock = await web3.Eth.Blocks.GetBlockNumber.SendRequestAsync();
+            var latestBlockNumber = long.Parse(latestBlock.Value.ToString());
 
-			logger.Debug($"Scanning new transactions {fromBlock}-{toBlock}");
-			await VerifyBlockEventsAsync(fromBlock.Value, toBlock, latestBlockNumber, notifiedTxs, false);
-		}
+            fromBlock = Math.Min(fromBlock ?? latestBlockNumber - blockConfirmedCount, latestBlockNumber - blockConfirmedCount);
+            var toBlock = latestBlockNumber - blockCount;
 
-		private async Task VerifyBlockEventsAsync(long blockFrom, long blockTo, long latestBlockNumber, HashSet<string> txs, bool isConfirmed)
-		{
-			if (transfersEvent == null)
-			{
-				logger.Error("Transfer event does not initialize");
-				return;
-			}
+            logger.Debug($"Scanning new transactions {fromBlock}-{toBlock}");
+            await VerifyBlockEventsAsync(fromBlock.Value, toBlock, latestBlockNumber, notifiedTxs, false);
 
-			var transfersFilter = await transfersEvent.CreateFilterBlockRangeAsync(new BlockParameter((ulong)blockFrom), new BlockParameter((ulong)blockTo));
-			var eventLogs = await transfersEvent.GetAllChanges<Transfer>(transfersFilter);
+            return latestBlockNumber;
+        }
 
-			foreach (var eventLog in eventLogs)
-			{
-				if (wallets.Contains(eventLog.Event.AddressTo) && !txs.Contains(eventLog.Log.TransactionHash))
-				{
-					long blockConfirmations = latestBlockNumber - (long)eventLog.Log.BlockNumber.Value;
+        private async Task VerifyBlockEventsAsync(long blockFrom, long blockTo, long latestBlockNumber, HashSet<string> txs, bool isConfirmed)
+        {
+            if (transfersEvent == null)
+            {
+                logger.Error("Transfer event does not initialize");
+                return;
+            }
 
-					OnNewTransaction(eventLog.Log.TransactionHash, eventLog.Event.Value, eventLog.Event.AddressTo, blockConfirmations);
-				}
-			}
-		}
+            var transfersFilter = await transfersEvent.CreateFilterBlockRangeAsync(new BlockParameter((ulong)blockFrom), new BlockParameter((ulong)blockTo));
+            var eventLogs = await transfersEvent.GetAllChanges<Transfer>(transfersFilter);
 
-		public void OnNewTransaction(string transactionHash, BigInteger amount, string to, long blockConfirmations)
-		{
-			var value = UnitConversion.Convert.FromWei(amount);
+            foreach (var eventLog in eventLogs)
+            {
+                if (wallets.Contains(eventLog.Event.AddressTo) && !txs.Contains(eventLog.Log.TransactionHash))
+                {
+                    long blockConfirmations = latestBlockNumber - (long)eventLog.Log.BlockNumber.Value;
 
-			logger.Info($"New transaction: {transactionHash}, amount: {value}");
+                    OnNewTransaction(eventLog.Log.TransactionHash, eventLog.Event.Value, eventLog.Event.AddressTo, blockConfirmations);
+                }
+            }
+        }
 
-			notifiedTxs.Add(transactionHash);
+        public void OnNewTransaction(string transactionHash, BigInteger amountWei, string to, long blockConfirmations)
+        {
+            var amount = UnitConversion.Convert.FromWei(amountWei);
+            var isConfirmed = blockConfirmations > blockCount;
+            logger.Info($"New transaction: {transactionHash}, block: {blockConfirmations}, amount: {amount}, isConfirmed: {isConfirmed}");
 
-			if (string.IsNullOrEmpty(callbackUrl))
-				return;
-
-			var client = new HttpClient();
-
-			var isConfirmed = blockConfirmations > blockCount;
-
-			//to = "0x5FFC3D2a92F5a1F90072e7F64d28897c20B979b5"; //HACK
-
-			var requestItems = new[]
-			{
-				new KeyValuePair<string, string>("tx_hash", transactionHash),
-				new KeyValuePair<string, string>("address", to),
-				new KeyValuePair<string, string>("currency", config.TokenCurrency),
-				new KeyValuePair<string, string>("apiKey", config.ApiKey),
-				new KeyValuePair<string, string>("gatewayKey", config.ApiKey + "-" + to.ToLower()),
-				new KeyValuePair<string, string>("amount", value.ToString(CultureInfo.InvariantCulture)),
-				new KeyValuePair<string, string>("amountString", amount.ToString(CultureInfo.InvariantCulture)),
-				new KeyValuePair<string, string>("confirmations", blockConfirmations.ToString(CultureInfo.InvariantCulture)),
-				new KeyValuePair<string, string>("isConfirmed", isConfirmed.ToString()),
-				new KeyValuePair<string, string>("nonce", DateTime.UtcNow.ToString("R"))
-			};
-
-			var data = new FormUrlEncodedContent(requestItems);
-			var requestContent = string.Join("&", requestItems.OrderBy(x=>x.Key).Select(p => $"{p.Key}={Uri.EscapeDataString(p.Value)}"));
-			data.Headers.Add("HMAC", HMACSHA512Hex(requestContent));
-
-			try
-			{
-				var res = client.PostAsync(callbackUrl, data).Result;
-				var content = res.Content.ReadAsStringAsync().Result;
-
-				if (content.ToLower() == "ok")
-				{
-					if (isConfirmed)
-					{
-						confirmedTxs.Add(transactionHash);
-					}
-					else
-					{
-						notifiedTxs.Add(transactionHash);
-					}
-				}
-			}
-			catch (Exception e)
-			{
-				logger.Error("OnNewTransaction " + e.ToString());
-			}
-		}
-
-		private string HMACSHA512Hex(string input)
-		{
-			var key = Encoding.UTF8.GetBytes(config.ApiSecret);
-			using (var hm = new HMACSHA512(key))
-			{
-				var signed = hm.ComputeHash(Encoding.UTF8.GetBytes(input));
-				return BitConverter.ToString(signed).Replace("-", string.Empty);
-			}
-		}
-	}
+            var result = notificationSender.Send(transactionHash, amount, amountWei, config.TokenCurrency, to, isConfirmed, blockConfirmations).GetAwaiter().GetResult();
+            if (result)
+            {
+                if (isConfirmed)
+                {
+                    confirmedTxs.Add(transactionHash);
+                }
+                else
+                {
+                    notifiedTxs.Add(transactionHash);
+                }
+            }
+        }
+    }
 }

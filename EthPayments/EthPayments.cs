@@ -1,5 +1,4 @@
 ﻿using EthPayments.Models;
-using Nethereum.Contracts;
 using Nethereum.Geth;
 using Nethereum.Geth.RPC.Debug.DTOs;
 using Nethereum.Hex.HexTypes;
@@ -9,9 +8,7 @@ using Newtonsoft.Json;
 using NLog;
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.Linq;
-using System.Net.Http;
 using System.Threading.Tasks;
 
 namespace EthPayments
@@ -19,8 +16,9 @@ namespace EthPayments
     public class EthPayments : IPayments
     {
         private readonly Logger logger = LogManager.GetCurrentClassLogger();
-        
+
         private readonly string callbackUrl;
+        private readonly NotificationSender notificationSender;
         private readonly Web3Geth web3;
 
         private readonly HexBigInteger zero = new HexBigInteger(0);
@@ -31,10 +29,7 @@ namespace EthPayments
 
         private const int blockCount = 14;
         private const int blockConfirmedCount = 40;
-
-        private EthPayments()
-        {
-        }
+        private const string currency = "ETH";
 
         public EthPayments(EthPaymentsConfig config)
         {
@@ -47,9 +42,10 @@ namespace EthPayments
             walletsTrimmed = new HashSet<string>(config.WalletsTrimmed);
             web3 = new Web3Geth(config.GethAddress);
             callbackUrl = config.CallbackUrl;
+            notificationSender = new NotificationSender(callbackUrl, config.ApiKey, config.ApiSecret);
         }
-        
-        public async Task VerifyWalletsAsync(long? fromBlock = null)
+
+        public async Task<long> VerifyWalletsAsync(long? fromBlock = null)
         {
             var latestBlock = await web3.Eth.Blocks.GetBlockNumber.SendRequestAsync();
             var latestBlockNumber = long.Parse(latestBlock.Value.ToString());
@@ -60,9 +56,11 @@ namespace EthPayments
 
             fromBlock = Math.Min(fromBlock ?? latestBlockNumber - blockConfirmedCount, latestBlockNumber - blockConfirmedCount);
             var fromBlockEnd = latestBlockNumber - blockCount;
-            
+
             logger.Debug($"Scanning confirmed transactions {fromBlock}-{fromBlockEnd}");
             await VerifyBlockAsync(fromBlock.Value, fromBlockEnd, latestBlockNumber, confirmedTxs, true);
+
+            return fromBlockEnd;
         }
 
         private async Task VerifyBlockAsync(long blockFrom, long blockTo, long latestBlockNumber, HashSet<string> txs, bool isConfirmed)
@@ -104,7 +102,7 @@ namespace EthPayments
             logger.Trace($"  trace transaction {transaction.TransactionHash}");
 
             var transactionTrace = await web3.Debug.TraceTransaction.SendRequestAsync(transaction.TransactionHash,
-                new TraceTransactionOptions {DisableMemory = true, DisableStack = false, FullStorage = false, DisableStorage = true});
+                new TraceTransactionOptions { DisableMemory = true, DisableStack = false, FullStorage = false, DisableStorage = true });
 
             var failed = transactionTrace["failed"];
             if (failed == null || Convert.ToBoolean(failed.ToString()))
@@ -149,30 +147,13 @@ namespace EthPayments
             }
         }
 
-        public void OnNewTransaction(string transactionHash, HexBigInteger amount, string to, long blockConfirmations, bool isConfirmed, bool txFromTrace)
+        public void OnNewTransaction(string transactionHash, HexBigInteger amountWei, string to, long blockConfirmations, bool isConfirmed, bool txFromTrace)
         {
-            var value = UnitConversion.Convert.FromWei(amount);
+            var amount = UnitConversion.Convert.FromWei(amountWei);
+            logger.Info($"New transaction: {transactionHash}, block: {blockConfirmations}, amount: {amount}, isConfirmed: {isConfirmed}, txFromTrace: {txFromTrace}");
 
-            logger.Info($"New transaction: {transactionHash}, block: {blockConfirmations}, amount: {value}, isConfirmed: {isConfirmed}, txFromTrace: {txFromTrace}");
-
-            if (string.IsNullOrEmpty(callbackUrl))
-                return;
-
-            var client = new HttpClient();
-			
-			var data = new FormUrlEncodedContent(new[]
-            {
-                new KeyValuePair<string, string>("tx_hash", transactionHash),
-                new KeyValuePair<string, string>("address", to),
-                new KeyValuePair<string, string>("gatewayKey", "GenesisVisionSecret-" + to.ToLower()),
-                new KeyValuePair<string, string>("amount", value.ToString(CultureInfo.InvariantCulture)),
-                new KeyValuePair<string, string>("confirmations", blockConfirmations.ToString())
-            });
-
-            var res = client.PostAsync(callbackUrl, data).Result;
-            var content = res.Content.ReadAsStringAsync().Result;
-
-            if (content.ToLower() == "ok")
+            var result = notificationSender.Send(transactionHash, amount, amountWei, currency, to, isConfirmed, blockConfirmations).GetAwaiter().GetResult();
+            if (result)
             {
                 if (isConfirmed)
                 {
@@ -183,6 +164,6 @@ namespace EthPayments
                     notifiedTxs.Add(transactionHash);
                 }
             }
-        }        
+        }
     }
 }

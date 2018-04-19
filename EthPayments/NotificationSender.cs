@@ -36,14 +36,14 @@ namespace EthPayments
 
             var requestItems = new[]
             {
-                new KeyValuePair<string, string>("tx_hash", transactionHash),
-                new KeyValuePair<string, string>("address", to),
+                new KeyValuePair<string, string>("transactionHash", transactionHash),
+                new KeyValuePair<string, string>("toAddress", to),
                 new KeyValuePair<string, string>("currency", currency),
                 new KeyValuePair<string, string>("apiKey", apiKey),
                 new KeyValuePair<string, string>("gatewayKey", apiKey + "-" + to.ToLower()),
                 new KeyValuePair<string, string>("amount", amount.ToString(CultureInfo.InvariantCulture)),
-                new KeyValuePair<string, string>("amountString", amountWei.ToString(CultureInfo.InvariantCulture)),
-                new KeyValuePair<string, string>("confirmations", blockConfirmations.ToString(CultureInfo.InvariantCulture)),
+                new KeyValuePair<string, string>("amountBigInt", amountWei.ToString(CultureInfo.InvariantCulture)),
+                new KeyValuePair<string, string>("blockConfirmations", blockConfirmations.ToString(CultureInfo.InvariantCulture)),
                 new KeyValuePair<string, string>("isConfirmed", isConfirmed.ToString()),
                 new KeyValuePair<string, string>("nonce", DateTime.UtcNow.ToString("R"))
             };

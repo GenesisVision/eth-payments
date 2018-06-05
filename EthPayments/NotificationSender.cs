@@ -37,7 +37,7 @@ namespace EthPayments
             var requestItems = new[]
             {
                 new KeyValuePair<string, string>("transactionHash", transactionHash),
-                new KeyValuePair<string, string>("toAddress", to),
+                new KeyValuePair<string, string>("address", to),
                 new KeyValuePair<string, string>("currency", currency),
                 new KeyValuePair<string, string>("apiKey", apiKey),
                 new KeyValuePair<string, string>("gatewayKey", apiKey + "-" + to.ToLower()),

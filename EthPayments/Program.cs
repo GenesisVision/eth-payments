@@ -6,6 +6,7 @@ using System.Linq;
 using System.Threading;
 using Microsoft.Extensions.Configuration;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 
 namespace EthPayments
 {
@@ -13,7 +14,12 @@ namespace EthPayments
     {
         private static readonly Logger logger = LogManager.GetCurrentClassLogger();
 
-        static async void Main(string[] args)
+        static void Main(string[] args)
+        {
+            Run(args).GetAwaiter().GetResult();
+        }
+
+        static async Task Run(string[] args)
         {
             try
             {

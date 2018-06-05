@@ -24,3 +24,5 @@ packages/*
 
 
 /EthPayments/appsettings.json
+/EthPayments/appsettings.Production.json
+/EthPayments/appsettings.Development.json

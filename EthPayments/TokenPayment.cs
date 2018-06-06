@@ -9,12 +9,8 @@ using Nethereum.Util;
 using NLog;
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.Linq;
-using System.Net.Http;
 using System.Numerics;
-using System.Security.Cryptography;
-using System.Text;
 using System.Threading.Tasks;
 
 namespace EthPayments
@@ -72,12 +68,12 @@ namespace EthPayments
             var toBlock = latestBlockNumber - blockCount;
 
             logger.Debug($"Scanning new transactions {fromBlock}-{toBlock}");
-            await VerifyBlockEventsAsync(fromBlock.Value, toBlock, latestBlockNumber, notifiedTxs, false);
+            await VerifyBlockEventsAsync(fromBlock.Value, toBlock, latestBlockNumber);
 
             return latestBlockNumber;
         }
 
-        private async Task VerifyBlockEventsAsync(long blockFrom, long blockTo, long latestBlockNumber, HashSet<string> txs, bool isConfirmed)
+        private async Task VerifyBlockEventsAsync(long blockFrom, long blockTo, long latestBlockNumber)
         {
             if (transfersEvent == null)
             {
@@ -90,7 +86,7 @@ namespace EthPayments
 
             foreach (var eventLog in eventLogs)
             {
-                if (wallets.Contains(eventLog.Event.AddressTo) && !txs.Contains(eventLog.Log.TransactionHash))
+                if (wallets.Contains(eventLog.Event.AddressTo))
                 {
                     long blockConfirmations = latestBlockNumber - (long)eventLog.Log.BlockNumber.Value;
 
@@ -103,18 +99,26 @@ namespace EthPayments
         {
             var amount = UnitConversion.Convert.FromWei(amountWei);
             var isConfirmed = blockConfirmations > blockCount;
-            logger.Info($"New transaction: {transactionHash}, block: {blockConfirmations}, amount: {amount}, isConfirmed: {isConfirmed}");
 
-            var result = notificationSender.Send(transactionHash, amount, amountWei, config.TokenCurrency, to, isConfirmed, blockConfirmations).GetAwaiter().GetResult();
-            if (result)
+            if(!isConfirmed && !notifiedTxs.Contains(transactionHash))
             {
-                if (isConfirmed)
-                {
-                    confirmedTxs.Add(transactionHash);
-                }
-                else
+                logger.Info($"New transaction: {transactionHash}, block: {blockConfirmations}, amount: {amount}, isConfirmed: {isConfirmed}");
+
+                var result = notificationSender.Send(transactionHash, amount, amountWei, config.TokenCurrency, to, isConfirmed, blockConfirmations).GetAwaiter().GetResult();
+                if (result)
                 {
                     notifiedTxs.Add(transactionHash);
+                }
+            }
+
+            if (isConfirmed && !confirmedTxs.Contains(transactionHash))
+            {
+                logger.Info($"New Confirmed transaction: {transactionHash}, block: {blockConfirmations}, amount: {amount}, isConfirmed: {isConfirmed}");
+
+                var result = notificationSender.Send(transactionHash, amount, amountWei, config.TokenCurrency, to, isConfirmed, blockConfirmations).GetAwaiter().GetResult();
+                if (result)
+                {
+                    confirmedTxs.Add(transactionHash);
                 }
             }
         }

@@ -65,10 +65,10 @@ namespace EthPayments
             var latestBlockNumber = long.Parse(latestBlock.Value.ToString());
 
             fromBlock = Math.Min(fromBlock ?? latestBlockNumber - blockConfirmedCount, latestBlockNumber - blockConfirmedCount);
-            var toBlock = latestBlockNumber - blockCount;
+            //var toBlock = latestBlockNumber - blockCount;
 
-            logger.Debug($"Scanning new transactions {fromBlock}-{toBlock}");
-            await VerifyBlockEventsAsync(fromBlock.Value, toBlock, latestBlockNumber);
+            logger.Debug($"Scanning new transactions {fromBlock}-{latestBlockNumber}");
+            await VerifyBlockEventsAsync(fromBlock.Value, latestBlockNumber, latestBlockNumber);
 
             return latestBlockNumber;
         }

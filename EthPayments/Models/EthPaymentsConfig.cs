@@ -12,6 +12,7 @@ namespace EthPayments.Models
 			WalletsTrimmed = Wallets.Select(x => x.Substring(2, 40)).ToList();
 		}
 
+        public string Name { get; set; }
 		public List<string> Wallets { get; private set; }
 		public List<string> WalletsTrimmed { get; private set; }
 		public string GethAddress { get; set; }

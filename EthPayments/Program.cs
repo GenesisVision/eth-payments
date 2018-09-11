@@ -7,6 +7,8 @@ using System.Threading;
 using Microsoft.Extensions.Configuration;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using NLog.Targets;
+using NLog.Notification.TelegramNotification;
 
 namespace EthPayments
 {
@@ -16,6 +18,7 @@ namespace EthPayments
 
         static void Main(string[] args)
         {
+            Target.Register<TelegramTarget>("TelegramNotification");
             Run(args).GetAwaiter().GetResult();
         }
 

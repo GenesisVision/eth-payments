@@ -113,7 +113,7 @@ namespace EthPayments
 
             if (isConfirmed && !confirmedTxs.Contains(transactionHash))
             {
-                logger.Info($"New Confirmed transaction: {transactionHash}, block: {blockConfirmations}, amount: {amount}, isConfirmed: {isConfirmed}");
+                logger.Warn($"New Confirmed transaction: {transactionHash}, block: {blockConfirmations}, amount: {amount}, isConfirmed: {isConfirmed}");
 
                 var result = notificationSender.Send(transactionHash, amount, amountWei, config.TokenCurrency, to, isConfirmed, blockConfirmations).GetAwaiter().GetResult();
                 if (result)
